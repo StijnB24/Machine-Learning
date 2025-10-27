@@ -1,0 +1,219 @@
+import pandas as pd
+import numpy as np
+
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, MinMaxScaler, PolynomialFeatures
+from sklearn.impute import SimpleImputer
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.linear_model import SGDRegressor
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.metrics import mean_absolute_error
+from sklearn.model_selection import cross_val_score
+
+import category_encoders as ce
+
+import pandas as pd
+import numpy as np
+
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, MinMaxScaler, PolynomialFeatures
+from sklearn.impute import SimpleImputer
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.linear_model import SGDRegressor
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.metrics import mean_absolute_error
+from sklearn.model_selection import cross_val_score
+
+import category_encoders as ce
+
+cols = ['whrswk', 'hhi', 'whi', 'hhi2', 'education', 'race','hispanic',
+        'experience', 'kidslt6', 'kids618', 'husby', 'region']
+
+for col in cols:
+    zeros = (data[col] == 0).sum()
+    others = (data[col] == 'other').sum()
+    nans = data[col].isna().sum()
+    print(f"{col}: {zeros} nullen, {nans} NaN's, {others} other")
+
+Num = ['experience', 'kidslt6', 'kids618', 'husby']
+Bin_cat = ['hhi', 'whi', 'hhi2', 'hispanic']
+Multi_cat = ['race', 'region', 'education']
+
+
+num_pipe = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='median')),
+    ('scaler', StandardScaler())
+])
+
+
+cat_pipe = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='most_frequent')),
+    ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False)),
+    ('scaler', StandardScaler())
+])
+
+
+prep_1 = ColumnTransformer(
+    transformers=[
+        ('num_scaled', num_pipe, Num),
+        ('bin_cat_ohe', cat_pipe, Bin_cat), 
+        ('multi_cat_ohe', cat_pipe, Multi_cat) 
+    ],
+    remainder='drop'
+)
+
+
+X_transformed = prep_1.fit_transform(X)
+
+print(f"1. Initieel aantal rijen en kolommen (X): {X.shape}")
+print(f"   Aantal rijen en kolommen na P1:        {X_transformed.shape}")
+
+# Gebruik .get_feature_names_out() om de kolomnamen te zien.
+try:
+    feature_names = prep_1.get_feature_names_out()
+    print(f"\n2. Totaal aantal features na P1: {len(feature_names)}")
+    print("   Alle feature namen:")
+    print(feature_names)
+except Exception as e:
+    print(f"\nKon featurenamen niet ophalen: {e}")
+
+X_transformed_df = pd.DataFrame(X_transformed, columns=feature_names)
+#print("\n3. Eerste 5 rijen van de getransformeerde data (Controle Scaling/OHE):")
+#print(X_transformed_df.head())
+
+num_pipe2 = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='median'))
+])
+
+cat_pipe2 = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='most_frequent')),
+    ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
+])
+
+prep_2_unscaled = ColumnTransformer(
+    transformers=[
+        ('num_raw', num_pipe2, Num),
+        ('bin_cat_ohe', cat_pipe2, Bin_cat),
+        ('multi_cat_ohe', cat_pipe2, Multi_cat)
+    ],
+    remainder='drop'
+)
+
+prep_2_scaled = Pipeline(steps=[
+    ('base_prep', prep_2_unscaled),
+    ('poly', PolynomialFeatures(degree=2, include_bias=False)),
+    ('final_scaler', StandardScaler())
+])
+
+poly = PolynomialFeatures(degree=2, interaction_only=True, include_bias=False)
+features_poly = poly.fit_transform(X_transformed)
+
+print("Original features:", X_transformed.shape[1])  # Use .shape[1] for number of features
+print("Polynomial features:", features_poly.shape[1])  # Use .shape[1] for number of features
+
+models_p1 = {
+    'KNN Regression': Pipeline(steps=[
+        ('preprocessor', prep_1), 
+        ('regressor', KNeighborsRegressor(n_neighbors=5))
+    ]),
+    'SGD Linear Regression': Pipeline(steps=[
+        ('preprocessor', prep_1), 
+        ('regressor', SGDRegressor(random_state=42))
+    ]),   
+    'Random Forest (RF)': Pipeline(steps=[
+        ('preprocessor', prep_1), 
+        ('regressor', RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)) # n_jobs=-1 voor snellere training
+    ]),    
+    'Regression Tree (RT)': Pipeline(steps=[
+        ('preprocessor', prep_1), 
+        ('regressor', DecisionTreeRegressor(random_state=42))
+    ])
+}
+
+
+models_p2 = {
+    'KNN Regression (P2)': Pipeline(steps=[
+        ('preprocessor', prep_2_scaled), 
+        ('regressor', KNeighborsRegressor(n_neighbors=5))
+    ]),
+    'SGD Linear Regression (P2)': Pipeline(steps=[
+        ('preprocessor', prep_2_scaled), 
+        ('regressor', SGDRegressor(random_state=42))
+    ]),
+    'Random Forest (P2)': Pipeline(steps=[
+        ('preprocessor', prep_2_scaled), 
+        ('regressor', RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1))
+    ]),
+    'Regression Tree (P2)': Pipeline(steps=[
+        ('preprocessor', prep_2_scaled), 
+        ('regressor', DecisionTreeRegressor(random_state=42))
+    ])
+}
+
+print("\n" + "="*50)
+print("--- Training van de 4 Modellen (met Pipeline 1) ---")
+print("="*50)
+
+trained_models = {}
+for name, model_pipeline in models_p1.items():
+    # Training op de volledige dataset (X, y)
+    print(f"Start training voor: {name}...")
+    model_pipeline.fit(X, y)
+    trained_models[name] = model_pipeline
+    print(f"✅ {name} getraind en opgeslagen.")
+
+print("\nAlle modellen zijn getraind. Ze zijn nu klaar om geëvalueerd te worden op de ongeziene testdataset (MAE).")
+
+baseline_guess = y.median()
+
+y_baseline_pred = np.full_like(y, baseline_guess)
+mae_baseline = mean_absolute_error(y, y_baseline_pred)
+
+print("--- Baseline Model MAE ---")
+print(f"De mediane uren gewerkt (Baseline Gok): {baseline_guess:.2f} uur")
+print(f"De MAE van deze Baseline Gok: {mae_baseline:.2f} uur")
+
+all_models = {**models_p1, **models_p2}
+results_mae = {}
+K_FOLDS = 5
+
+for name, model in all_models.items():
+    print(f"Start CV voor: {name}...")
+    
+    # Voer Cross-Validation uit
+    scores = cross_val_score(
+        model, 
+        X, y, 
+        scoring='neg_mean_absolute_error', 
+        cv=K_FOLDS, 
+        n_jobs=-1
+    )
+    
+    mean_mae = -scores.mean()
+    std_mae = scores.std()
+    results_mae[name] = mean_mae
+    
+    print(f"✅ {name:<30} - Gem. MAE: {mean_mae:.2f} uur (+/- {std_mae:.2f} uur)")
+
+print("\n--- Samenvatting van de Generalisatieprestaties (P1 vs. P2 Poly) ---")
+results_df = pd.Series(results_mae).sort_values()
+print(results_df)
+
+data_autograder = pd.read_csv('/kaggle/input/autograder/health_insurance_autograde.csv')
+data_autograder.head()
+
+# TODO Replace this with your own estimate of the MAE of your best model
+estimate_MAE_on_new_data = np.array([1.0])
+
+# TODO Replace this with the predictions of your best model
+# via e.g. prediction = model.predict(data_autograder)
+predictions_autograder_data = np.array([-1] * 17272)
+
+# Upload this file to the Vocareum autograder:
+result = np.append(estimate_MAE_on_new_data, predictions_autograder_data)
+pd.DataFrame(result).to_csv("autograder_submission.txt", index=False, header=False)
+
