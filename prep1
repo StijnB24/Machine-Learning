@@ -1,0 +1,92 @@
+import pandas as pd
+import numpy as np
+
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, MinMaxScaler
+from sklearn.impute import SimpleImputer
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.linear_model import SGDRegressor
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.metrics import mean_absolute_error
+
+import category_encoders as ce
+
+
+
+# These are your training samples along with their labels
+data = pd.read_csv('/kaggle/input/health-insurance/health_insurance_train.csv')
+
+X = data.drop('whrswk', axis=1)
+y = data['whrswk']
+
+print(data.head())
+# You need to extract the features and the regression target. The regression target is 'whrswk'. 
+
+
+
+pd.set_option('display.max_rows', 200)
+print(data.head(20))
+
+
+
+cols = ['whrswk', 'hhi', 'whi', 'hhi2', 'education', 'race','hispanic',
+        'experience', 'kidslt6', 'kids618', 'husby', 'region']
+
+for col in cols:
+    zeros = (data[col] == 0).sum()
+    others = (data[col] == 'other').sum()
+    nans = data[col].isna().sum()
+    print(f"{col}: {zeros} nullen, {nans} NaN's, {others} other")
+
+
+
+Num = ['experience', 'kidslt6', 'kids618', 'husby']
+Bin_cat = ['hhi', 'whi', 'hhi2', 'hispanic']
+Multi_cat = ['race', 'region', 'education']
+
+num_pipe = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='median')),
+    ('scaler', StandardScaler())
+])
+
+cat_pipe = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='most_frequent')),
+    ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False)),
+    ('scaler', StandardScaler())
+])
+
+prep_1 = ColumnTransformer(
+    transformers=[
+        ('num_scaled', num_pipe, Num),
+        
+        # Gebruikt BINARY_CAT_FEATS
+        ('bin_cat_ohe', cat_pipe, Bin_cat), 
+        
+        # Gebruikt MULTI_CAT_FEATS
+        ('multi_cat_ohe', cat_pipe, Multi_cat) 
+    ],
+    remainder='drop'
+)
+
+
+
+X_transformed = prep_1.fit_transform(X)
+
+print(f"1. Initieel aantal rijen en kolommen (X): {X.shape}")
+print(f"   Aantal rijen en kolommen na P1:        {X_transformed.shape}")
+
+# Gebruik .get_feature_names_out() om de kolomnamen te zien.
+try:
+    feature_names = prep_1.get_feature_names_out()
+    print(f"\n2. Totaal aantal features na P1: {len(feature_names)}")
+    print("   Eerste 10 feature namen (Controle OHE):")
+    print(feature_names[:10])
+except Exception as e:
+    print(f"\nKon featurenamen niet ophalen: {e}")
+
+X_transformed_df = pd.DataFrame(X_transformed, columns=feature_names)
+print("\n3. Eerste 5 rijen van de getransformeerde data (Controle Scaling/OHE):")
+print(X_transformed_df.head())
+
