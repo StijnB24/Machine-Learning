@@ -274,9 +274,19 @@ analysis_cols = [
     'rank_test_score'
 ]
 
-
 analysis_df = results_df[analysis_cols].sort_values(by = 'rank_test_score')
 analysis_df['mean_MAE'] = -analysis_df['mean_test_score']
+
+tuned_results = {}
+
+for name, grid_search_object in tuned_models.items():
+    
+    mae = -grid_search_object.best_score_ 
+    best_index = grid_search_object.best_index_
+    std = grid_search_object.cv_results_['std_test_score'][best_index]
+    
+    tuned_results[name] = mae
+    print(f"{name:<30} Tuned MAE: {mae:.4f} uur (+/- {std:.4f} uur)")
 
 X_train_curve, X_test_curve, y_train_curve, y_test_curve = train_test_split(
     X_f, y, test_size = 0.1, random_state = 42
